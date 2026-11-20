@@ -1,0 +1,10 @@
+# 默认按文本处理并规范化换行
+* text=auto
+
+# build_msvc.bat 为 GBK 编码的批处理：禁止换行规范化，保持字节原样
+*.bat -text
+
+# 明确二进制
+*.png binary
+*.ico binary
+*.zip binary

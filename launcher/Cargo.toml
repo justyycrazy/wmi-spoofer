@@ -1,0 +1,51 @@
+[package]
+name = "launcher"
+version = "1.0.0"
+description = "WMI 伪装器（wmi-spoofer）"
+edition = "2021"
+
+# 显式指定二进制名：产物为 wmi-spoofer.exe
+[[bin]]
+name = "wmi-spoofer"
+path = "src/main.rs"
+
+[dependencies]
+# 精简 features：只留 glow（OpenGL）渲染器 + 内置字体 + 剪贴板，
+# 砍掉默认的 wgpu（含 naga/ash，体积大头）与 accesskit 无障碍栈
+eframe = { version = "0.37", default-features = false, features = [
+    "glow",
+    "clipboard",
+    "default_fonts",
+] }
+egui = "0.37"   # eframe::egui 的直接引入，界面代码直接 use egui::
+rfd = "0.15"    # 原生文件选择对话框
+
+# Windows 注入所需的 API 绑定（非 Windows 平台走编译级 stub）
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_System_Wmi",
+    "Win32_Storage_FileSystem",
+] }
+
+# 把 icons/icon.ico 嵌入 exe 资源（文件/任务栏图标）
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+# 不 strip、不 panic=abort：保留符号表与 unwind 展开表。
+# 一方面 panic 可正常回传（app.rs 的 catch_unwind 守卫在 release 下生效）、
+# 崩溃有可用 backtrace；另一方面完全剥离的二进制画像
+# （无符号 + 无展开表 + 单编译单元）是 Defender Bearfoos.A!ml 等
+# ML 判定的高误报形态，保留符号可显著降低新构建被误报的概率。
+lto = true
+opt-level = "z"        # 按体积优化（GUI 程序性能足够）
+codegen-units = 1      # 单编译单元，跨 crate 优化更彻底

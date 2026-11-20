@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: rust fmt
+        working-directory: launcher
+        run: cargo fmt --check
+
+      - name: rust clippy
+        working-directory: launcher
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: rust tests
+        working-directory: launcher
+        run: cargo test
+
+      - name: setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: build DLL (rc + cl)
+        shell: cmd
+        run: |
+          if not exist wmi-spoof-dll\build mkdir wmi-spoof-dll\build
+          rc /nologo /fo wmi-spoof-dll\build\version.res wmi-spoof-dll\src\version.rc
+          cl /nologo /LD /O2 /MT /EHsc /std:c++17 /utf-8 /D_CRT_SECURE_NO_WARNINGS /DUNICODE /D_UNICODE wmi-spoof-dll\src\dllmain.cpp wmi-spoof-dll\src\hooks.cpp wmi-spoof-dll\src\log.cpp wmi-spoof-dll\src\config.cpp wmi-spoof-dll\src\parse.cpp wmi-spoof-dll\src\inject.cpp wmi-spoof-dll\minhook\src\buffer.c wmi-spoof-dll\minhook\src\hook.c wmi-spoof-dll\minhook\src\trampoline.c wmi-spoof-dll\minhook\src\hde\hde64.c /I wmi-spoof-dll\minhook\include /Fe:wmi-spoof-dll\wmi-spoofer.dll /Fo:wmi-spoof-dll\build\ /link wbemuuid.lib ole32.lib oleaut32.lib uuid.lib advapi32.lib wmi-spoof-dll\build\version.res
+
+      - name: build + run pure tests
+        shell: cmd
+        run: |
+          if not exist wmi-spoof-dll\build\tests mkdir wmi-spoof-dll\build\tests
+          cl /nologo /EHsc /std:c++17 /utf-8 /I wmi-spoof-dll\src wmi-spoof-dll\tests\test_pure.cpp wmi-spoof-dll\src\parse.cpp wmi-spoof-dll\src\config.cpp wmi-spoof-dll\src\log.cpp /Fe:wmi-spoof-dll\tests\test_pure.exe /Fo:wmi-spoof-dll\build\tests\ /link wbemuuid.lib ole32.lib oleaut32.lib
+          wmi-spoof-dll\tests\test_pure.exe
+
+      - name: build probes + childtest sanity
+        shell: cmd
+        run: |
+          if exist wmi-spoof-dll\build\probes rmdir /s /q wmi-spoof-dll\build\probes
+          if not exist wmi-spoof-dll\build\probes mkdir wmi-spoof-dll\build\probes
+          for %%t in (wmitest childtest bench-wmi probe-apartment probe-blanket) do (
+            if exist wmi-spoof-dll\tools\%%t.cpp cl /nologo /MT /O2 /EHsc /std:c++17 /utf-8 wmi-spoof-dll\tools\%%t.cpp /Fe:wmi-spoof-dll\build\probes\%%t.exe /Fo:wmi-spoof-dll\build\probes\ /link wbemuuid.lib ole32.lib oleaut32.lib
+            if errorlevel 1 exit /b 1
+          )
+          wmi-spoof-dll\build\probes\childtest.exe %TEMP%\childtest-ci.txt || exit /b 1
+          find "OK" %TEMP%\childtest-ci.txt || exit /b 1
+
+      # 真实注入冒烟：受控 Windows runner 上的强制门禁，失败即红
+      - name: injection smoke
+        working-directory: launcher
+        run: cargo test inject_smoke -- --ignored

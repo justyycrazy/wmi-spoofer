@@ -1,0 +1,24 @@
+# 构建产物（C++ DLL）
+wmi-spoof-dll/build/
+wmi-spoof-dll/*.dll
+
+# 构建产物（Rust launcher）
+launcher/target/
+
+# 编译/链接中间文件（DLL、探针、单测共用）
+*.obj
+*.ilk
+*.exp
+*.lib
+*.pdb
+*.exe
+
+# 运行期产物（部署目录中生成，可手工删除自动重建）
+wmi-spoofer.ini
+wmi-spoofer.log
+
+# 发布包（本地构建）
+dist/
+
+# ZCode 工作区
+.zcode/
